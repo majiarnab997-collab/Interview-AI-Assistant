@@ -71,8 +71,9 @@ from langchain_groq import ChatGroq
 # from langchain_huggingface import HuggingFaceEmbeddings
 #from langchain_google_genai import GoogleGenerativeAIEmbeddings
 
-import google.generativeai as genai
+from google import genai
 from langchain_core.embeddings import Embeddings
+
 
 
 # ============================================================
@@ -138,30 +139,28 @@ evaluator_llm = LangchainLLMWrapper(
 # # # with ChromaDB, LangChain, and RAGAS without downloading any weights or using PyTorch.
 # # ------------------------------------------------------------------------------
 
-genai.configure(api_key=GEMINI_API_KEY)
+genai_client = genai.Client(api_key=GEMINI_API_KEY)
 
 class DirectGeminiEmbeddings(Embeddings):
-    """Zero-memory overhead custom embeddings wrapper using official google.generativeai SDK."""
-    def __init__(self, model_name="models/text-embedding-004"):
+    """Zero-RAM embedding wrapper using official google-genai v2.8+ SDK."""
+    def __init__(self, model_name="text-embedding-004"):
         self.model = model_name
 
     def embed_documents(self, texts: list[str]) -> list[list[float]]:
-       
-        response = genai.embed_content(
+        response = genai_client.models.embed_content(
             model=self.model,
-            content=texts,
-            task_type="retrieval_document"
+            contents=texts,
         )
-        return response['embedding']
+        return [item.values for item in response.embeddings]
 
     def embed_query(self, text: str) -> list[float]:
-        
-        response = genai.embed_content(
+        response = genai_client.models.embed_content(
             model=self.model,
-            content=text,
-            task_type="retrieval_query"
+            contents=text,
         )
-        return response['embedding']
+        return response.embeddings[0].values
+
+
     
 # gemini_embedder = GoogleGenerativeAIEmbeddings(
 #     model="text-embedding-004",
