@@ -10,16 +10,21 @@ Hybrid LLM Architecture:
 """
 
 # ==============================================================================
-# ARCHITECTURAL NOTICE: HOSTING & MEMORY OPTIMIZATION (RENDER 512MB RAM LIMIT)
-# ------------------------------------------------------------------------------
-# Why we replaced local HuggingFace / SentenceTransformers ("all-MiniLM-L6-v2"):
-# Hosting platforms on free tiers (such as Render) enforce strict 512MB RAM limits.
-# Loading PyTorch (torch) and local transformer models into system memory instantly
-# exhausts 512MB RAM, triggering Out-Of-Memory (OOM) process termination.
-#
-# Solution implemented:
-# We offload all vector embedding generation to Google's text-embedding-004 API.
-# This eliminates PyTorch and local model weights, keeping base RAM usage under ~180MB.
+# # ARCHITECTURAL WARNING & CONTRIBUTOR NOTE: 512MB RAM LIMITATION ON CLOUD TIERS
+# ==============================================================================
+# # WHY WE CANNOT USE LOCAL HUGGINGFACE / SENTENCE-TRANSFORMERS ("all-MiniLM-L6-v2"):
+# # 1. Free cloud hosting services (e.g., Render Free Web Service) provide only 512MB RAM.
+# # 2. Importing `torch` (PyTorch) and loading local transformer model weights takes >400MB-800MB RAM.
+# # 3. Under a 512MB limit, loading PyTorch triggers an immediate OOM (Out Of Memory) SIGKILL.
+# #
+# # WHY WE CANNOT USE `langchain-google-genai` DIRECTLY:
+# # Recent updates to `langchain-google-genai` route requests through Google GenAI v1beta endpoints,
+# # which trigger `404 NOT_FOUND: models/text-embedding-004 is not found for API version v1beta`.
+# #
+# # THE ARCHITECTURAL SOLUTION:
+# # We implement a lightweight, custom LangChain-compatible wrapper (`DirectGeminiEmbeddings`)
+# # using the official `google.generativeai` SDK. This consumes ~0MB local RAM by delegating
+# # all embedding computation to Google Cloud REST APIs, keeping total app RAM well under ~200MB.
 # ==============================================================================
 
 import os
@@ -64,7 +69,10 @@ from langchain_groq import ChatGroq
 # We instead use GoogleGenerativeAIEmbeddings to query embeddings over REST/gRPC.
 # from sentence_transformers import SentenceTransformer
 # from langchain_huggingface import HuggingFaceEmbeddings
-from langchain_google_genai import GoogleGenerativeAIEmbeddings
+#from langchain_google_genai import GoogleGenerativeAIEmbeddings
+
+import google.generativeai as genai
+from langchain_core.embeddings import Embeddings
 
 
 # ============================================================
@@ -120,10 +128,48 @@ evaluator_llm = LangchainLLMWrapper(
 # Zero local weight loading; all math runs server-side on Google's infrastructure.
 # We wrap `gemini_embedder` inside `LangchainEmbeddingsWrapper` so RAGAS metrics 
 # (faithfulness & answer_relevancy) evaluate properly without local neural models.
-gemini_embedder = GoogleGenerativeAIEmbeddings(
-    model="text-embedding-004",
-    google_api_key=GEMINI_API_KEY
-)
+
+# # # PROBLEM WITH `langchain-google-genai`:
+# # # Causes `404 NOT_FOUND` because `models/text-embedding-004` fails on v1beta endpoint calls.
+# # #
+# # # SOLUTION:
+# # # Directly wrap Google's stable `google.generativeai.embed_content` SDK method.
+# # # Inheriting from `langchain_core.embeddings.Embeddings` makes this directly compatible
+# # # with ChromaDB, LangChain, and RAGAS without downloading any weights or using PyTorch.
+# # ------------------------------------------------------------------------------
+
+genai.configure(api_key=GEMINI_API_KEY)
+
+class DirectGeminiEmbeddings(Embeddings):
+    """Zero-memory overhead custom embeddings wrapper using official google.generativeai SDK."""
+    def __init__(self, model_name="models/text-embedding-004"):
+        self.model = model_name
+
+    def embed_documents(self, texts: list[str]) -> list[list[float]]:
+       
+        response = genai.embed_content(
+            model=self.model,
+            content=texts,
+            task_type="retrieval_document"
+        )
+        return response['embedding']
+
+    def embed_query(self, text: str) -> list[float]:
+        
+        response = genai.embed_content(
+            model=self.model,
+            content=text,
+            task_type="retrieval_query"
+        )
+        return response['embedding']
+    
+# gemini_embedder = GoogleGenerativeAIEmbeddings(
+#     model="text-embedding-004",
+#     google_api_key=GEMINI_API_KEY
+# )
+# evaluator_embeddings = LangchainEmbeddingsWrapper(gemini_embedder)
+
+gemini_embedder = DirectGeminiEmbeddings()
 evaluator_embeddings = LangchainEmbeddingsWrapper(gemini_embedder)
 
 
