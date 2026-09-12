@@ -121,7 +121,7 @@ evaluator_llm = LangchainLLMWrapper(
 # We wrap `gemini_embedder` inside `LangchainEmbeddingsWrapper` so RAGAS metrics 
 # (faithfulness & answer_relevancy) evaluate properly without local neural models.
 gemini_embedder = GoogleGenerativeAIEmbeddings(
-    model="models/text-embedding-004",
+    model="text-embedding-004",
     google_api_key=GEMINI_API_KEY
 )
 evaluator_embeddings = LangchainEmbeddingsWrapper(gemini_embedder)
