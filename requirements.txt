@@ -1,0 +1,17 @@
+gradio
+groq
+crewai==1.14.3
+crewai-tools
+litellm
+google-genai
+google-generativeai
+langchain
+langchain-community
+langchain-groq
+langchain-huggingface
+sentence-transformers
+chromadb
+ragas==0.3.9
+datasets
+pypdf
+pydantic
