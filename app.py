@@ -9,13 +9,26 @@ Hybrid LLM Architecture:
   - Gemini (deep reasoning): rigorous technical evaluation, real-time research, and final audits.
 """
 
+# ==============================================================================
+# ARCHITECTURAL NOTICE: HOSTING & MEMORY OPTIMIZATION (RENDER 512MB RAM LIMIT)
+# ------------------------------------------------------------------------------
+# Why we replaced local HuggingFace / SentenceTransformers ("all-MiniLM-L6-v2"):
+# Hosting platforms on free tiers (such as Render) enforce strict 512MB RAM limits.
+# Loading PyTorch (torch) and local transformer models into system memory instantly
+# exhausts 512MB RAM, triggering Out-Of-Memory (OOM) process termination.
+#
+# Solution implemented:
+# We offload all vector embedding generation to Google's text-embedding-004 API.
+# This eliminates PyTorch and local model weights, keeping base RAM usage under ~180MB.
+# ==============================================================================
+
 import os
 import json
 from datetime import datetime
 
 
 import gradio as gr
-from sentence_transformers import SentenceTransformer
+
 from pypdf import PdfReader
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 import chromadb
@@ -44,7 +57,14 @@ from ragas.metrics import faithfulness, answer_relevancy
 from ragas.llms import LangchainLLMWrapper
 from ragas.embeddings import LangchainEmbeddingsWrapper
 from langchain_groq import ChatGroq
-from langchain_huggingface import HuggingFaceEmbeddings
+
+# [MEMORY OPTIMIZATION - IMPORTS]
+# Do NOT import `sentence_transformers` or `langchain_huggingface` here.
+# Both libraries pull in PyTorch as a dependency, which balloons memory allocation.
+# We instead use GoogleGenerativeAIEmbeddings to query embeddings over REST/gRPC.
+# from sentence_transformers import SentenceTransformer
+# from langchain_huggingface import HuggingFaceEmbeddings
+from langchain_google_genai import GoogleGenerativeAIEmbeddings
 
 
 # ============================================================
@@ -88,10 +108,24 @@ gemini_llm = LLM(
 evaluator_llm = LangchainLLMWrapper(
     ChatGroq(model="openai/gpt-oss-120b", groq_api_key=GROQ_API_KEY)
 )
-embedding_model = SentenceTransformer("all-MiniLM-L6-v2")
-evaluator_embeddings = LangchainEmbeddingsWrapper(
-    HuggingFaceEmbeddings(model_name="all-MiniLM-L6-v2")
+
+# [MEMORY OPTIMIZATION - EMBEDDING MODEL INITIALIZATION]
+# PREVIOUS IMPLEMENTATION (DO NOT UNCOMMENT ON 512MB RAM INSTANCES):
+# embedding_model = SentenceTransformer("all-MiniLM-L6-v2")
+# evaluator_embeddings = LangchainEmbeddingsWrapper(
+#     HuggingFaceEmbeddings(model_name="all-MiniLM-L6-v2")
+# )
+# 
+# CURRENT IMPLEMENTATION:
+# Zero local weight loading; all math runs server-side on Google's infrastructure.
+# We wrap `gemini_embedder` inside `LangchainEmbeddingsWrapper` so RAGAS metrics 
+# (faithfulness & answer_relevancy) evaluate properly without local neural models.
+gemini_embedder = GoogleGenerativeAIEmbeddings(
+    model="models/text-embedding-004",
+    google_api_key=GEMINI_API_KEY
 )
+evaluator_embeddings = LangchainEmbeddingsWrapper(gemini_embedder)
+
 
 search_tool = SerperDevTool()
 
@@ -218,7 +252,14 @@ def process_resume(pdf_file):
     text_splitter = RecursiveCharacterTextSplitter(chunk_size=500, chunk_overlap=50)
     all_splits = text_splitter.split_text(full_text)
 
-    resume_embeddings = embedding_model.encode(all_splits).tolist()
+
+    # [MEMORY OPTIMIZATION - DOCUMENT CHUNK VECTORIZATION]
+    # Replaced: `embedding_model.encode(all_splits).tolist()`
+    # We call `gemini_embedder.embed_documents()` to send chunk batches to the cloud.
+    # No PyTorch tensor buffers are generated in local RAM.
+    resume_embeddings = gemini_embedder.embed_documents(all_splits)
+
+
     chunk_ids = [f"chunk_{i}" for i in range(len(all_splits))]
     collection.upsert(documents=all_splits, embeddings=resume_embeddings, ids=chunk_ids)
     return "✅ Resume Processed Successfully!"
@@ -292,8 +333,15 @@ def interview_bot(user_message, chat_history, job_description, persona,
         conversation_history = []
     if candidate_sessions:
         previous_history = candidate_sessions[-1].get("summary", "")
+        
 
-    query_vector = embedding_model.encode(user_message).tolist()
+
+    # [MEMORY OPTIMIZATION - RUNTIME QUERY EMBEDDING]
+    # Replaced: `embedding_model.encode(user_message).tolist()`
+    # Generates the vector query using Gemini API rather than a local forward pass.
+
+    
+    query_vector = gemini_embedder.embed_query(user_message)
     results = collection.query(query_embeddings=[query_vector], n_results=2)
     context = "\n---\n".join(results["documents"][0]) if results["documents"] else ""
 

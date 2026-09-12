@@ -1,17 +1,44 @@
+# ==============================================================================
+# REQUIREMENTS CONFIGURATION — OPTIMIZED FOR 512MB RAM CONSTRAINTS
+# ==============================================================================
+
+# Core Interface & LLM Providers
 gradio
 groq
+google-genai
+google-generativeai
+
+# Agent Orchestration
 crewai==1.14.3
 crewai-tools
 litellm
-google-genai
-google-generativeai
+
+# LangChain Integrations
 langchain
 langchain-community
 langchain-groq
-langchain-huggingface
-sentence-transformers
+langchain-google-genai
+
+# Vector Store & Document Processing
 chromadb
+pypdf
+
+# Evaluation & Schemas
 ragas==0.3.9
 datasets
-pypdf
 pydantic
+
+# ==============================================================================
+# REMOVED / OPTIONAL LIBRARIES (UNCOMMENT ONLY ON INSTANCES WITH >= 2GB RAM):
+# ------------------------------------------------------------------------------
+# # sentence-transformers
+# # langchain-huggingface
+#
+# NOTE: The above two packages depend heavily on PyTorch (`torch`) to run local 
+# models such as "all-MiniLM-L6-v2". Loading model weights into memory instantly 
+# exceeds the 512MB memory boundary on free-tier platforms like Render, 
+# resulting in OOM kills.
+#
+# Enable them ONLY if self-hosting on a high-memory VM or Hugging Face Space 
+# (16GB RAM) where local neural embedding calculations are preferred over cloud APIs.
+# ==============================================================================
