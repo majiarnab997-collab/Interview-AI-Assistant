@@ -1,4 +1,3 @@
-
 """
 Interview AI Assistant — Mock Interview Platform (Memory-Optimized)
 ==================================================================
@@ -329,4 +328,6 @@ with gr.Blocks(title="Interview AI Assistant") as demo:
     )
 
 if __name__ == "__main__":
-    demo.launch(server_name="0.0.0.0", server_port=7860)
+    # Render-এর ডাইনামিক পোর্ট নির্ধারণ (Render স্বয়ংক্রিয়ভাবে $PORT প্রদান করে)
+    server_port = int(os.environ.get("PORT", 7860))
+    demo.launch(server_name="0.0.0.0", server_port=server_port)
