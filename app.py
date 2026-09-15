@@ -1,4 +1,4 @@
-%%writefile app.py
+
 """
 Interview AI Assistant — Mock Interview Platform (Memory-Optimized)
 ==================================================================

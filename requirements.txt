@@ -19,6 +19,9 @@ langchain-community
 langchain-groq
 langchain-google-genai
 
+# Lightweight Embeddings (ONNX — no PyTorch)
+fastembed
+
 # Vector Store & Document Processing
 chromadb
 pypdf
