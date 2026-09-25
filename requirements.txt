@@ -26,6 +26,7 @@ chromadb
 crewai
 crewai-tools
 litellm
+google-genai
 pydantic
 datasets
 ragas
