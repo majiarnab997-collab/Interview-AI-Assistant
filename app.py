@@ -352,7 +352,7 @@ import json
 from datetime import datetime
 
 import gradio as gr
-from sentence_transformers import SentenceTransformer
+from fastembed import TextEmbedding
 from pypdf import PdfReader
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 import chromadb
@@ -381,7 +381,7 @@ from ragas.metrics import faithfulness, answer_relevancy
 from ragas.llms import LangchainLLMWrapper
 from ragas.embeddings import LangchainEmbeddingsWrapper
 from langchain_groq import ChatGroq
-from langchain_huggingface import HuggingFaceEmbeddings
+from langchain_community.embeddings.fastembed import FastEmbedEmbeddings
 
 # Optional: lets you use a local .env file when running/testing outside Railway.
 # Railway itself injects env vars automatically, so this is safe either way.
@@ -446,9 +446,11 @@ gemini_llm = LLM(
 evaluator_llm = LangchainLLMWrapper(
     ChatGroq(model="openai/gpt-oss-120b", groq_api_key=GROQ_API_KEY)
 )
-embedding_model = SentenceTransformer("all-MiniLM-L6-v2")
+# Lightweight ONNX embeddings (no PyTorch) — avoids the out-of-memory crashes
+# that sentence-transformers/PyTorch caused on Railway's smaller memory tiers.
+embedding_model = TextEmbedding(model_name="BAAI/bge-small-en-v1.5")
 evaluator_embeddings = LangchainEmbeddingsWrapper(
-    HuggingFaceEmbeddings(model_name="all-MiniLM-L6-v2")
+    FastEmbedEmbeddings(model_name="BAAI/bge-small-en-v1.5")
 )
 
 search_tool = SerperDevTool()
@@ -576,7 +578,7 @@ def process_resume(pdf_file):
     text_splitter = RecursiveCharacterTextSplitter(chunk_size=500, chunk_overlap=50)
     all_splits = text_splitter.split_text(full_text)
 
-    resume_embeddings = embedding_model.encode(all_splits).tolist()
+    resume_embeddings = [emb.tolist() for emb in embedding_model.embed(all_splits)]
     chunk_ids = [f"chunk_{i}" for i in range(len(all_splits))]
     collection.upsert(documents=all_splits, embeddings=resume_embeddings, ids=chunk_ids)
     return "✅ Resume Processed Successfully!"
@@ -655,7 +657,7 @@ def interview_bot(user_message, chat_history, job_description, persona,
     if candidate_sessions:
         previous_history = candidate_sessions[-1].get("summary", "")
 
-    query_vector = embedding_model.encode(user_message).tolist()
+    query_vector = list(embedding_model.embed([user_message]))[0].tolist()
     results = collection.query(query_embeddings=[query_vector], n_results=2)
     context = "\n---\n".join(results["documents"][0]) if results["documents"] else ""
 

@@ -19,16 +19,16 @@
 # pydantic
 
 gradio
-sentence-transformers
+fastembed
 pypdf
 langchain-text-splitters
 chromadb
 crewai
 crewai-tools
+litellm
 pydantic
 datasets
 ragas
 langchain-groq
-langchain-huggingface
 langchain-community
 python-dotenv
