@@ -351,6 +351,10 @@ import os
 import json
 from datetime import datetime
 
+import litellm
+litellm.drop_params = True
+litellm.enable_cache = False
+
 import gradio as gr
 from fastembed import TextEmbedding
 from pypdf import PdfReader
@@ -382,9 +386,7 @@ from ragas.llms import LangchainLLMWrapper
 from ragas.embeddings import LangchainEmbeddingsWrapper
 from langchain_groq import ChatGroq
 from langchain_community.embeddings.fastembed import FastEmbedEmbeddings
-import litellm
-litellm.drop_params = True
-litellm.enable_cache = False
+
 
 # Optional: lets you use a local .env file when running/testing outside Railway.
 # Railway itself injects env vars automatically, so this is safe either way.
